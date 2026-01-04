@@ -11,7 +11,7 @@ jobs:
 
     - name: Build artifact
       run: |
-        tar -czf app.tar.gz .
+        tar --exclude='app.tar.gz' -czf app.tar.gz .
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
