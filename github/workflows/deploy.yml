@@ -1,0 +1,42 @@
+name: Deploy WordPress
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Build artifact
+      run: |
+        tar -czf app.tar.gz .
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-2
+
+    - name: Upload to S3
+      run: |
+        aws s3 cp app.tar.gz s3://ahmed_app/
+
+    - name: Deploy to EC2 via SSH
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+      run: |
+        eval $(ssh-agent -s)
+        echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        IPS=$(aws ec2 describe-instances --filters "Name=tag:aws:autoscaling:groupName,Values=Ahmed-ASG" --query "Reservations[].Instances[].PublicIpAddress" --output text)
+        for ip in $IPS; do
+          if [ "$ip" != "None" ]; then
+            scp -o StrictHostKeyChecking=no app.tar.gz ec2-user@$ip:/tmp/
+            ssh -o StrictHostKeyChecking=no ec2-user@$ip "sudo tar -xzf /tmp/app.tar.gz -C /var/www/html/ && sudo chown -R apache:apache /var/www/html && sudo systemctl restart httpd"
+          fi
+        done
