@@ -14,7 +14,12 @@ jobs:
       run: |
         mkdir dist
         rsync -rr . dist --exclude .git --exclude .github --exclude dist
-        tar -czf app.tar.gz -C dist .
+      
+        NOW=$(date +'%Y-%m-%d-%H-%M')
+      
+        tar -czf app-${NOW}.tar.gz -C dist .
+       
+        echo "DEPLOY_FILE=app-${NOW}.tar.gz" >> $GITHUB_ENV
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -25,8 +30,8 @@ jobs:
 
     - name: Upload to S3
       run: |
-    
-        aws s3 cp app.tar.gz s3://shalaby-app-git/
+        
+        aws s3 cp ${{ env.DEPLOY_FILE }} s3://shalaby-app-git/
 
     - name: Deploy to EC2 via SSH
       env:
@@ -37,13 +42,13 @@ jobs:
         mkdir -p ~/.ssh
         chmod 700 ~/.ssh
         
-        
         IPS=$(aws ec2 describe-instances --filters "Name=tag:aws:autoscaling:groupName,Values=Shalaby-ASG" --query "Reservations[].Instances[].PublicIpAddress" --output text)
         
         for ip in $IPS; do
           if [ "$ip" != "None" ] && [ -n "$ip" ]; then
-            echo "Deploying to $ip..."
-            scp -o StrictHostKeyChecking=no -o ConnectTimeout=30 app.tar.gz ec2-user@$ip:/tmp/
-            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 ec2-user@$ip "sudo tar -xzf /tmp/app.tar.gz -C /var/www/html/ && sudo chown -R apache:apache /var/www/html && sudo systemctl restart httpd"
+            echo "Deploying version ${{ env.DEPLOY_FILE }} to $ip..."
+            
+            scp -o StrictHostKeyChecking=no -o ConnectTimeout=30 ${{ env.DEPLOY_FILE }} ec2-user@$ip:/tmp/
+            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 ec2-user@$ip "sudo tar -xzf /tmp/${{ env.DEPLOY_FILE }} -C /var/www/html/ && sudo chown -R apache:apache /var/www/html && sudo systemctl restart httpd"
           fi
         done
