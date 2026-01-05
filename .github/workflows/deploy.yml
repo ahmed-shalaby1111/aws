@@ -25,7 +25,8 @@ jobs:
 
     - name: Upload to S3
       run: |
-        aws s3 cp app.tar.gz s3://shalaby_app/
+    
+        aws s3 cp app.tar.gz s3://shalaby-app-git/
 
     - name: Deploy to EC2 via SSH
       env:
@@ -36,7 +37,7 @@ jobs:
         mkdir -p ~/.ssh
         chmod 700 ~/.ssh
         
-        # جلب الـ IPs بناءً على اسم الـ ASG الخاص بك
+        
         IPS=$(aws ec2 describe-instances --filters "Name=tag:aws:autoscaling:groupName,Values=Shalaby-ASG" --query "Reservations[].Instances[].PublicIpAddress" --output text)
         
         for ip in $IPS; do
