@@ -14,17 +14,14 @@ jobs:
       run: |
         mkdir dist
         rsync -rr . dist --exclude .git --exclude .github --exclude dist
-        
         NOW=$(date +'%Y-%m-%d-%H-%M')
-        
-        # إنشاء النسخة المؤرخة للـ S3
         tar -czf app-${NOW}.tar.gz -C dist .
         cp app-${NOW}.tar.gz app.tar.gz
-        
         echo "DEPLOY_FILE=app-${NOW}.tar.gz" >> $GITHUB_ENV
 
     - name: Configure AWS credentials
-      uses: actions/configure-aws-credentials@v4
+      
+      uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -32,9 +29,7 @@ jobs:
 
     - name: Upload to S3
       run: |
-        
         aws s3 cp ${{ env.DEPLOY_FILE }} s3://shalaby-app-git/
-        
         aws s3 cp app.tar.gz s3://shalaby-app-git/
 
     - name: Refresh Auto Scaling Group
