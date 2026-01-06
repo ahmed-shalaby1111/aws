@@ -14,15 +14,17 @@ jobs:
       run: |
         mkdir dist
         rsync -rr . dist --exclude .git --exclude .github --exclude dist
-      
+        
         NOW=$(date +'%Y-%m-%d-%H-%M')
-      
+        
+        # إنشاء النسخة المؤرخة للـ S3
         tar -czf app-${NOW}.tar.gz -C dist .
-       
+        cp app-${NOW}.tar.gz app.tar.gz
+        
         echo "DEPLOY_FILE=app-${NOW}.tar.gz" >> $GITHUB_ENV
 
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
+      uses: actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -32,23 +34,11 @@ jobs:
       run: |
         
         aws s3 cp ${{ env.DEPLOY_FILE }} s3://shalaby-app-git/
+        
+        aws s3 cp app.tar.gz s3://shalaby-app-git/
 
-    - name: Deploy to EC2 via SSH
-      env:
-        SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+    - name: Refresh Auto Scaling Group
       run: |
-        eval $(ssh-agent -s)
-        echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
-        mkdir -p ~/.ssh
-        chmod 700 ~/.ssh
-        
-        IPS=$(aws ec2 describe-instances --filters "Name=tag:aws:autoscaling:groupName,Values=Shalaby-ASG" --query "Reservations[].Instances[].PublicIpAddress" --output text)
-        
-        for ip in $IPS; do
-          if [ "$ip" != "None" ] && [ -n "$ip" ]; then
-            echo "Deploying version ${{ env.DEPLOY_FILE }} to $ip..."
-            
-            scp -o StrictHostKeyChecking=no -o ConnectTimeout=30 ${{ env.DEPLOY_FILE }} ec2-user@$ip:/tmp/
-            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 ec2-user@$ip "sudo tar -xzf /tmp/${{ env.DEPLOY_FILE }} -C /var/www/html/ && sudo chown -R apache:apache /var/www/html && sudo systemctl restart httpd"
-          fi
-        done
+        aws autoscaling start-instance-refresh \
+          --auto-scaling-group-name Shalaby-ASG \
+          --preferences '{"MinHealthyPercentage": 50}'
